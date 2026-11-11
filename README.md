@@ -40,6 +40,7 @@ skills/        6 个 SKILL.md（SOP，非运行约束）
 templates/     钉钉模板、免责副本、大屏 schema 与示例
 deploy/        systemd unit、环境变量样例、automation 建议、部署说明
 tools/         静态自检扫描器与禁用模式配置
+USAGE.md       使用手册（安装 / 配置 / 启动 / 日常操作 / 排障）
 ACCEPTANCE.md  验收清单与规则对照
 ```
 
@@ -57,6 +58,9 @@ $PYTHON qctl.py status              # 运行态与最近冻结快照
 
 > `python3` 默认可能指向未装 PyYAML 的解释器；请使用上面的托管 venv，
 > 或先 `pip install -r requirements.txt`。akshare 只在需要真实行情时才需要。
+>
+> **完整可照做的操作手册见 [USAGE.md](USAGE.md)**：安装、配置、systemd 启动、
+> 12 条日常命令、读懂推送与报表、人工复核清单、故障排查。
 
 ## 4. CLI 速查
 
