@@ -1,12 +1,13 @@
-# 部署说明 · 模式 A（L1 常驻服务 + L2 低频编排）
+# 部署说明 · 模式 A（L1 常驻服务，L2 为未启用的设计备选）
 
 ## 1. 架构定位
 
 ```
 L1  Python 常驻服务（本目录 qsignal.service）
     └─ 5s 采集 / 信号生成 / 1min 结算 / 15:10 冻结 / 漂移 / 报表 / 推送
-L2  WorkBuddy automation（见 workbuddy-automation.md）
-    └─ 日终复核、周报、月报；低频、人工交互、不触碰高频链路
+L2  WorkBuddy automation（见 workbuddy-automation.md）⚪ 未启用、不推荐
+    └─ 设计备选：日终复核 / 周报 / 月报摘要；3 条 automation 从未创建
+       L1 已产出全部原始报表，L2 仅多一层 LLM 摘要且有持续 token 成本
 只读展示  frontend/serve.py（可选）
     └─ 科技蓝大屏 + /api/state、/api/market；读同一 SQLite，不参与任何判定
 共享持久化：data/qsignal.db（SQLite WAL）
@@ -14,6 +15,8 @@ L2  WorkBuddy automation（见 workbuddy-automation.md）
 
 **为什么必须有 L1**：WorkBuddy automation 只支持分钟级触发，每次触发是全新
 Agent 会话，无法承担 5s 轮询与事件级结算。高频链路必须放在本地常驻进程。
+**部署时只需启动 L1 与可选的 `frontend/` 大屏，无需配置任何 WorkBuddy 能力**；
+`skills/` 是普通 SOP 文档目录，不参与部署、不需要注册。
 
 ## 2. 环境准备
 

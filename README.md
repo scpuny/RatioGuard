@@ -4,20 +4,29 @@ A 股 ETF 配对统计套利信号系统（510300 / 159919）。**仅观测 / �
 无自动下单、无券商客户端调用、无键鼠自动化、无 OCR。人工最终审核信号。
 
 > 统计结果仅对已收集样本负责，是历史样本快照，不预测未来、不保证收益。
+>
+> **关于项目名**：名称沿用方案阶段命名，**运行时并不依赖 WorkBuddy**。
+> 全部生产逻辑是纯 Python（`src/qsignal/`、`qctl.py`）+ 只读前端（`frontend/`），
+> 没有 import 任何 WorkBuddy SDK、不加载 `SKILL.md`、不调用 automation。
+> L2 编排与 `skills/` 是设计备选 / 人类可读 SOP，**均未启用**，详见 §1 与
+> `deploy/workbuddy-automation.md`。保留它们只为记录架构决策依据。
 
 ## 1. 架构：模式 A（Python 常驻服务 + WorkBuddy 低频编排）
 
 | 层 | 职责 | 位置 |
 | --- | --- | --- |
-| L1 执行层 | 5s 采集、信号生成、1min 结算、15:10 冻结、漂移复核、报表、推送 | `src/qsignal/`、`qctl.py` |
-| L2 编排层 | 日终复核、周报、月报；低频、人工交互 | `deploy/workbuddy-automation.md` |
-| L3 口径层 | 6 个 Skill 的 SOP 说明（**非运行约束**） | `skills/S1..S6/SKILL.md` |
-| L4 人工层 | 复核信号、暂停 / 恢复推送、修改配置 | `qctl.py` |
-| 只读展示层 | 科技蓝大屏与 HTTP API，读同一 SQLite，不参与任何判定 | `frontend/` |
-| 持久化 | SQLite WAL，跨会话状态全部落盘 | `data/qsignal.db` |
+| L1 执行层 ✅ 实际运行 | 5s 采集、信号生成、1min 结算、15:10 冻结、漂移复核、报表、推送 | `src/qsignal/`、`qctl.py` |
+| L2 编排层 ⚪ 未启用 | 日终复核、周报、月报；低频、人工交互（设计备选，3 条 automation 从未创建） | `deploy/workbuddy-automation.md` |
+| L3 口径层 ⚪ 未启用 | 6 份人类可读 SOP（**不是 WorkBuddy Skill**，不在加载路径、生产代码零引用） | `skills/S1..S6/SKILL.md` |
+| L4 人工层 ✅ 实际运行 | 复核信号、暂停 / 恢复推送、修改配置 | `qctl.py` |
+| 只读展示层 ✅ 实际运行 | 科技蓝大屏与 HTTP API，读同一 SQLite，不参与任何判定 | `frontend/` |
+| 持久化 ✅ 实际运行 | SQLite WAL，跨会话状态全部落盘 | `data/qsignal.db` |
 
 选择模式 A 的原因：WorkBuddy automation 只支持分钟级触发，且每次触发是全新
 会话，无法承担秒级轮询与事件级结算；高频链路必须由本地常驻进程承担。
+**L2 从未启用，也不推荐启用**：L1 已产出全部原始报表，L2 唯一增量是 LLM 写摘要，
+会带来持续 token 成本与限流风险，与零成本约束冲突。零成本替代方案是
+`qctl.py status` / `audit`、`reports/` 与 `frontend/` 大屏。
 
 ## 2. 目录结构
 
@@ -39,9 +48,9 @@ src/qsignal/
 frontend/       科技蓝只读大屏：serve.py（HTTP/API）、index.html / styles.css / app.js、
                seed_demo.py（离线演示库生成；*.db 不入库）
 tests/         M0–M5 单元测试与端到端验收
-skills/        6 个 SKILL.md（SOP，非运行约束）
+skills/        6 个 SKILL.md（人类可读 SOP；非 WorkBuddy Skill，从未被加载）
 templates/     钉钉模板、免责副本、大屏 schema 与示例
-deploy/        systemd unit、环境变量样例、automation 建议、部署说明
+deploy/        systemd unit、环境变量样例、L2 设计备选（未启用）、部署说明
 tools/         静态自检扫描器与禁用模式配置
 USAGE.md       使用手册（安装 / 配置 / 启动 / 大屏 / 日常操作 / 排障）
 ACCEPTANCE.md  验收清单与规则对照
@@ -127,7 +136,7 @@ $PYTHON frontend/serve.py            # http://127.0.0.1:8787/，默认读真实�
 ## 6. 交付与验收
 
 - 完整验收清单与规则逐条对照见 `ACCEPTANCE.md`；
-- 部署见 `deploy/README.md`；低频编排见 `deploy/workbuddy-automation.md`；
+- 部署见 `deploy/README.md`；L2 低频编排设计备选（未启用、不推荐）见 `deploy/workbuddy-automation.md`；
 - 动态大屏字段说明见 `templates/dashboard_schema.json`；
 - 前端大屏启动、双数据源切换、真实行情探针与空库语义见 `USAGE.md` §6.4。
 

@@ -63,7 +63,7 @@
 | 科技蓝只读大屏 | `frontend/`（`serve.py` / `index.html` / `styles.css` / `app.js` / `seed_demo.py`） | ✅ 本轮新增 |
 | 静态自检 | `tools/static_scan.py` + `tools/forbidden_patterns.json` | ✅ |
 | systemd unit | `deploy/qsignal.service` + `deploy/qsignal.env.example` | ✅ |
-| 低频编排配置 | `deploy/workbuddy-automation.md`（3 条 RRULE 与 prompt） | ✅ |
+| L2 编排设计备选（非运行能力） | `deploy/workbuddy-automation.md`（3 条 RRULE 与 prompt） | ⚪ 文档已交付，automation 未创建、不推荐启用 |
 | 部署说明 | `deploy/README.md` | ✅ |
 | 顶层说明 | `README.md` | ✅ |
 | 使用手册 | `USAGE.md` | ✅ |
@@ -82,9 +82,15 @@
    已按规则保守判 loss，但真实盘中行情未回放验证歧义率量级。
 4. **systemd 未在目标机器启用**：仅交付 unit 文件与部署步骤，
    `ExecStart` / `User` / `WorkingDirectory` 需按目标环境调整。
-5. **WorkBuddy automation 未实际创建**：`deploy/workbuddy-automation.md`
-   给出可直接使用的 RRULE 与 prompt，是否创建由用户决定；
-   且 automation 无法识别 A 股节假日，会话首步必须调用 `session_gate()`。
+5. **WorkBuddy 相关能力为设计备选，运行时不依赖**：`deploy/workbuddy-automation.md`
+   的 3 条 automation **从未创建、当前不推荐启用**（L1 已产出全部原始报表，
+   L2 唯一增量是 LLM 摘要，有持续 token 成本与限流风险）；
+   `skills/S1..S6/SKILL.md` 放在普通目录，**不在 WorkBuddy 的 Skill 加载路径**，
+   从未被加载、生产代码零引用，仅作人类可读 SOP；文档早期列出的 5 个
+   slash 指令从未注册，并不存在。生产代码零处 import WorkBuddy SDK /
+   加载 SKILL.md / 调用 automation API，拔掉该层系统照常运行。
+   `session_gate()` 与 WorkBuddy 无关，由 `qctl.py status` 复用且有单测覆盖。
+   另外 automation 无法识别 A 股节假日，若将来启用，会话首步必须调用 `session_gate()`。
 6. **统计样本需真实积累**：当前 `reports/` 示例基于空库，
    `qualified=False`（`below_hard_floor` / `insufficient_sample`）。
    按配置需 ≥100 笔有效样本且覆盖 ≥20 个交易日，Wilson 下限才可能超过

@@ -1,4 +1,6 @@
-"""L1 常驻服务编排：模式 A（Python 常驻服务 + WorkBuddy 低频编排）。
+"""L1 常驻服务编排：模式 A（Python 常驻服务；L2 低频编排为设计备选、未启用）。
+
+运行时不依赖 WorkBuddy：本进程是唯一数据生产者，无 automation / Skill 参与。
 
 职责边界
 --------

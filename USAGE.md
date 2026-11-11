@@ -146,8 +146,10 @@ journalctl -u qsignal -f
 | 15:10 例程内 | 互斥窗口漂移复核、生成 Markdown / CSV / 大屏 JSON、无前视审计 |
 | 信号入库时 | 只引用最近一次冻结快照决定是否推送；盘中绝不刷新放行依据 |
 
-> WorkBuddy automation 只承担日终复核 / 周报 / 月报（见
-> `deploy/workbuddy-automation.md`），**不参与秒级采集**。
+> 上表全部由 L1 常驻服务完成，**不依赖 WorkBuddy**。`deploy/workbuddy-automation.md`
+> 描述的 L2 低频编排是设计备选，**从未创建、当前不推荐启用**（唯一增量是用 LLM
+> 写摘要，有持续 token 成本）；直接看 `qctl.py status` / `audit`、
+> `reports/` 与 `frontend/` 大屏即可，数据同源且零成本。
 
 ---
 
@@ -340,14 +342,30 @@ $PYTHON qctl.py resume --reason "人工复核后恢复"
 
 ---
 
-## 8. 可选：WorkBuddy 低频编排
+## 8. 设计备选：WorkBuddy 低频编排（未启用，不推荐）
 
-`deploy/workbuddy-automation.md` 给出 3 条可直接创建的 automation（日终复核 15:15、
-周报周一 09:00、月报每月 1 日 09:30）及其 RRULE 与 prompt。注意：
+> **现状**：`deploy/workbuddy-automation.md` 里的 3 条 automation **从未创建**；
+> `skills/S1..S6/SKILL.md` 是普通目录下的人类可读 SOP，**不在 WorkBuddy 的
+> Skill 加载路径**、从未被加载，生产代码零引用。系统拔掉这一层照常运行。
+
+该文档列出 3 条可选配置值（日终复核 15:15、周报周一 09:00、月报每月 1 日 09:30）
+的 RRULE 与 prompt，仅供将来参考。保留它的意义是记录架构决策依据，不代表
+这些能力已存在。若确实要启用，还需额外创建 automation、迁移 SKILL.md 到
+`.workbuddy/skills/`、按目标机器修正 `cwds` 并注册 slash command。
+
+**为什么当前不推荐启用**：L1 的 15:10 日终例程已产出全部原始报表与结构化数据，
+L2 剩下的唯一增量只是「用 LLM 把结构化结果汇总成人话摘要」，却要为此承担
+每次触发一次全新 Agent 会话的 token 开销和免费档限流 / 429 风险。
+零成本替代：`qctl.py status` / `audit`、`reports/`、以及 `frontend/` 大屏的
+`/api/state`。
+
+其余能力边界（若将来启用仍需遵守）：
 
 - automation 只支持分钟级，**不能**承担 5s 采集；
 - 每次触发是全新会话，状态全部依赖 SQLite；
-- RRULE 不识别 A 股节假日，会话首步必须调用 `session_gate()` 判断交易日。
+- RRULE 不识别 A 股节假日，会话首步必须调用 `session_gate()` 判断交易日；
+- 文档早期列出的 `/report` `/status` 等斜杠指令**从未注册、并不存在**，
+  人工复核请直接执行 `qctl.py` 对应子命令（见 §5）。
 
 ---
 
@@ -368,6 +386,7 @@ $PYTHON qctl.py resume --reason "人工复核后恢复"
 | 大屏 `?source=demo` 无数据 | 演示库未生成（不随仓库分发），先跑 `$PYTHON frontend/seed_demo.py` |
 | 大屏行情 chip 无价格 / 显示灰色 | 免费行情源全部不可达，或盘后快照 `fresh=false`；用 `selftest --check-market` 确认链路 |
 | 改了前端没生效 | html / css / js 刷新浏览器；改 `serve.py` / `collector.py` 必须重启 Python 进程 |
+| 找不到 `/report` `/status` 等斜杠指令，或 automation / Skill 没生效 | 这些指令从未注册、3 条 automation 从未创建、`skills/` 不在 Skill 加载路径，属**设计上未启用**；直接用 §5 的 `qctl.py` 子命令与 `frontend/` 大屏即可（见 §8） |
 | 大屏两个新 chip 不显示 | 后端是旧版进程（无 `meta` / `/api/market` 404），前端自动隐藏属预期；重启 `frontend/serve.py` 即可 |
 
 结构化日志检索示例：

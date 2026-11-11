@@ -87,7 +87,10 @@ class TradeCalendar:
 
 def session_gate(cfg, dt: datetime | None = None,
                  trading_days: Iterable[str] | None = None) -> tuple[bool, str]:
-    """WorkBuddy automation 会话内的轻量交易日门禁（不依赖 akshare 也可工作）。"""
+    """轻量交易日门禁（供 qctl.py status 复用；可选 L2 会话亦可调用）。
+
+    与 WorkBuddy 无运行时依赖，不依赖 akshare 也能工作。
+    """
     moment = dt or datetime.now(ZoneInfo(cfg.get("timezone", "Asia/Shanghai")))
     local = to_local(moment, cfg.get("timezone", "Asia/Shanghai"))
     if not is_trading_day(local.date(), trading_days):
