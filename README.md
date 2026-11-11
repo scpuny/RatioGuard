@@ -13,6 +13,7 @@ A 股 ETF 配对统计套利信号系统（510300 / 159919）。**仅观测 / �
 | L2 编排层 | 日终复核、周报、月报；低频、人工交互 | `deploy/workbuddy-automation.md` |
 | L3 口径层 | 6 个 Skill 的 SOP 说明（**非运行约束**） | `skills/S1..S6/SKILL.md` |
 | L4 人工层 | 复核信号、暂停 / 恢复推送、修改配置 | `qctl.py` |
+| 只读展示层 | 科技蓝大屏与 HTTP API，读同一 SQLite，不参与任何判定 | `frontend/` |
 | 持久化 | SQLite WAL，跨会话状态全部落盘 | `data/qsignal.db` |
 
 选择模式 A 的原因：WorkBuddy automation 只支持分钟级触发，且每次触发是全新
@@ -28,45 +29,51 @@ run_acceptance.py           M0→M5 分阶段验收入口
 requirements.txt            最小依赖（PyYAML；akshare 可选）
 src/qsignal/
   core/       配置 / DB / Wilson / 公式 / 硬规则 / 免责 / 审计 / 日历 / 自检 / 静态扫描
-  market/     行情采集与脏数据过滤（三级降级链）
+  market/     行情采集与脏数据过滤（五级降级链，含腾讯/新浪纯标准库兜底）
   strategy/   信号生成（quote_id 绑定、SQL 无前视）
   settle/     分钟 K 结算状态机
   stats/      统计快照与互斥窗口漂移检验
   notify/     客观推送、钉钉加签、去重、暂停恢复
   report/     Markdown 报表 / CSV / 动态大屏 JSON
   service/    常驻服务编排（Runner）
+frontend/       科技蓝只读大屏：serve.py（HTTP/API）、index.html / styles.css / app.js、
+               seed_demo.py（离线演示库生成；*.db 不入库）
 tests/         M0–M5 单元测试与端到端验收
 skills/        6 个 SKILL.md（SOP，非运行约束）
 templates/     钉钉模板、免责副本、大屏 schema 与示例
 deploy/        systemd unit、环境变量样例、automation 建议、部署说明
 tools/         静态自检扫描器与禁用模式配置
-USAGE.md       使用手册（安装 / 配置 / 启动 / 日常操作 / 排障）
+USAGE.md       使用手册（安装 / 配置 / 启动 / 大屏 / 日常操作 / 排障）
 ACCEPTANCE.md  验收清单与规则对照
 ```
 
 ## 3. 快速开始
 
 ```bash
-cd /home/yangbo/WorkBuddy/charge
-PYTHON=/home/yangbo/.workbuddy/binaries/python/envs/default/bin/python
+cd RatioGuard                       # 进入仓库根目录
+PYTHON=python                       # 已安装 requirements.txt 的解释器
 
 $PYTHON qctl.py selftest            # 启动自检
 $PYTHON run_acceptance.py ALL       # M0→M5 全量验收
 $PYTHON qctl.py serve --once        # 单轮编排（离线可跑）
 $PYTHON qctl.py status              # 运行态与最近冻结快照
+$PYTHON frontend/serve.py           # 可选：启动科技蓝大屏 http://127.0.0.1:8787/
 ```
 
-> `python3` 默认可能指向未装 PyYAML 的解释器；请使用上面的托管 venv，
-> 或先 `pip install -r requirements.txt`。akshare 只在需要真实行情时才需要。
+> `python3` 默认可能指向未装 PyYAML 的解释器；先 `pip install -r requirements.txt`，
+> 或使用已装依赖的托管 venv（路径见 `USAGE.md` §0）。
+>
+> `akshare` 只在启用「东财 ETF 全表」源时需要；腾讯 / 新浪源纯标准库、免费无 key，
+> 不装也能采集真实行情。用 `qctl.py selftest --check-market` 可验证链路。
 >
 > **完整可照做的操作手册见 [USAGE.md](USAGE.md)**：安装、配置、systemd 启动、
-> 12 条日常命令、读懂推送与报表、人工复核清单、故障排查。
+> 前端大屏与双数据源、12 条日常命令、读懂推送与报表、人工复核清单、故障排查。
 
 ## 4. CLI 速查
 
 | 命令 | 说明 |
 | --- | --- |
-| `selftest [--check-market]` | 静态扫描 / 硬规则 / Wilson 对拍 / 公式 / schema / 免责 |
+| `selftest [--check-market]` | 静态扫描 / 硬规则 / Wilson 对拍 / 公式 / schema / 免责（加参数再验行情链路） |
 | `bootstrap` | 自检 + 配置版本登记 |
 | `serve [--once] [--max-ticks N]` | 常驻主循环 |
 | `tick` | 单轮编排 |
@@ -77,6 +84,18 @@ $PYTHON qctl.py status              # 运行态与最近冻结快照
 | `status` | 运行态、冻结快照、各表计数、审计违规数 |
 | `audit` | 无前视 SQL 审计（违规退出码 1） |
 | `pause` / `resume` | 暂停 / 恢复交易类消息推送 |
+
+**前端大屏（只读，可选）：**
+
+```bash
+$PYTHON frontend/seed_demo.py        # 首次生成离线演示库（*.db 不随仓库分发）
+$PYTHON frontend/serve.py            # http://127.0.0.1:8787/，默认读真实库
+# 页面加 ?source=live / ?source=demo 可即时切库，无需重启服务
+```
+
+大屏通过 `/api/state` 聚合展示数据、`/api/market` 只读探测真实行情；
+后者不写库、不生成信号、不进统计口径。真实统计只能由 L1 常驻服务在交易时段逐日采集、
+每日 15:10 冻结产生，空库时大屏显示 `—` 而非 `0.00%`。详见 `USAGE.md` §6.4。
 
 ## 5. 关键口径（硬规则已代码化）
 
@@ -97,6 +116,10 @@ $PYTHON qctl.py status              # 运行态与最近冻结快照
 9. 交付物：config.yaml、SQL、全部 Python 模块、单元测试、6 个 SKILL.md、
    钉钉模板、动态大屏 JSON 结构。
 10. 大屏新增：歧义样本占比、hold 率、互斥窗口 z 值、配置版本标记。
+11. 行情采集为五级降级链（东财全表 → 东财单只 → 腾讯 → 新浪 → 同花顺），
+    中间三级纯标准库、无需 akshare；返回双边报价时间戳供 skew 校验。
+12. 大屏与 `/api/market` 只读；演示 / 真实数据源必须在界面显式标识，
+    行情探针不写业务表、不生成信号、不参与统计与放行。
 
 `hold` 不计入胜率 / Wilson 区间 / 盈亏平衡判定，但进入 hold 率与质量指标；
 含成本 `break_even = (sl + cost) / (tp + sl)`；日内不隔夜，15:00 强制 hold。
@@ -105,10 +128,12 @@ $PYTHON qctl.py status              # 运行态与最近冻结快照
 
 - 完整验收清单与规则逐条对照见 `ACCEPTANCE.md`；
 - 部署见 `deploy/README.md`；低频编排见 `deploy/workbuddy-automation.md`；
-- 动态大屏字段说明见 `templates/dashboard_schema.json`。
+- 动态大屏字段说明见 `templates/dashboard_schema.json`；
+- 前端大屏启动、双数据源切换、真实行情探针与空库语义见 `USAGE.md` §6.4。
 
 ## 7. 边界
 
 本系统只做观测、记录、统计、告警。**没有任何自动下单、键鼠自动化、OCR 逻辑**；
-统计只代表历史样本快照，不预测收益。所有信号均需人工复核行情、流动性、
-ETF 申赎状态、券源与交易成本后再决定是否操作，不构成投资建议。
+前端大屏只读，不写业务数据、不改动任何统计口径。统计只代表历史样本快照，
+不预测收益。所有信号均需人工复核行情、流动性、ETF 申赎状态、券源与交易成本后
+再决定是否操作，不构成投资建议。

@@ -7,8 +7,9 @@
 | 验收入口 | `python run_acceptance.py ALL` |
 | 最终全量结果 | **PASS（run=100, failures=0, errors=0）** |
 | 运行环境 | Python 3.13.12（托管 venv，PyYAML 6.0.3），离线、无 akshare、无网络 |
+| 补充验证（本轮） | 五级行情降级链接入后复跑 `run_acceptance.py ALL` → PASS 100/100；`qctl.py selftest --check-market` → `ok=true`，7 项检查通过，`source=tencent, ratio=0.95777` |
 | 独立静态自检 | `python tools/static_scan.py` → `ok=true, scanned=29 files, violations=[]` |
-| 启动自检 | `python qctl.py selftest` → `ok=true`，6 项检查全通过 |
+| 启动自检 | `python qctl.py selftest` → `ok=true`，6 项检查全通过（加 `--check-market` 为 7 项） |
 | 端到端运行证据 | `qctl.py serve --once` 已实际生成 `reports/dashboard.json`、`reports/report_2026-11-11.md`、`reports/signals_2026-11-11.csv` |
 
 阶段用例数：M0=25、M1=20、M2=19、M3=13、M4=9、M5=14，合计 100。
@@ -18,7 +19,7 @@
 | 阶段 | 用例数 | 结果 | 覆盖要点 |
 | --- | --- | --- | --- |
 | **M0 核心骨架与自检** | 25 | PASS | Wilson 已知值对拍 / 边界与非法输入；`break_even` 含成本；两比例 z；质量指标；硬规则下限；`config_hash` 与 `tp_sl_basis` 拒绝；静态扫描；免责合规；DB schema；启动自检 |
-| **M1 行情采集与信号生成** | 20 | PASS | 行情归一化 / 脏数据过滤；非交易时段不请求；有效与无效行情都落库；行情源失败写日志；三级降级链结构；`quote_id` 绑定；SQL 无前视审计；未来行情抛 `LookaheadViolation`；阈值方向；重复 open 信号；rolling median；交易日历 |
+| **M1 行情采集与信号生成** | 20 | PASS | 行情归一化 / 脏数据过滤；非交易时段不请求；有效与无效行情都落库；行情源失败写日志；降级链结构（现为五级）；`quote_id` 绑定；SQL 无前视审计；未来行情抛 `LookaheadViolation`；阈值方向；重复 open 信号；rolling median；交易日历 |
 | **M2 结算与统计快照** | 19 | PASS | 分钟 K 聚合；TP / SL / 双触保守 loss + `ambiguity=1`；短方向；多分钟顺序；EOD hold；hold 不计入统计；结算幂等；**结算不刷新快照**；三 scope；qualified 判定顺序；`config_hash` 分组；15:10 冻结幂等 |
 | **M3 报表推送与大屏 JSON** | 13 | PASS | 三类推送合规；禁用话术拦截；冻结快照文案；钉钉 HMAC 加签；dry-run；pause / dedup / resume；Markdown 报表；大屏 JSON 新口径；CSV 导出 |
 | **M4 漂移监控与配置版本隔离** | 9 | PASS | 窗口不足返回 `insufficient`；W1/W2 互斥且等长；Bonferroni 校正临界值；最小效应门槛阻止假告警；告警暂停并写日志；`drift_log` 供大屏读取；配置变更不误判漂移；运行态参数变更不切分样本；全库静态扫描零违规 |
@@ -41,7 +42,8 @@
 
 **定位重申**：系统只做观测、记录、统计、告警，无自动下单、键鼠、OCR 逻辑；
 统计只代表历史样本快照，不预测收益。`hold` 不计入胜率 / Wilson / 盈亏平衡，
-但进入 hold 率；日内不隔夜，15:00 强制 hold。
+但进入 hold 率；日内不隔夜，15:00 强制 hold。前端大屏只读，不写业务表、
+不生成信号、不参与放行判定。
 
 ## 4. 交付物清单核对
 
@@ -58,19 +60,22 @@
 | 钉钉推送模板 | `templates/dingtalk.md`（含完整免责全文） | ✅ |
 | 免责副本 | `templates/disclaimer.txt` | ✅ |
 | 动态大屏结构 | `templates/dashboard_schema.json` + `dashboard_example.json` | ✅ |
+| 科技蓝只读大屏 | `frontend/`（`serve.py` / `index.html` / `styles.css` / `app.js` / `seed_demo.py`） | ✅ 本轮新增 |
 | 静态自检 | `tools/static_scan.py` + `tools/forbidden_patterns.json` | ✅ |
 | systemd unit | `deploy/qsignal.service` + `deploy/qsignal.env.example` | ✅ |
 | 低频编排配置 | `deploy/workbuddy-automation.md`（3 条 RRULE 与 prompt） | ✅ |
 | 部署说明 | `deploy/README.md` | ✅ |
 | 顶层说明 | `README.md` | ✅ |
+| 使用手册 | `USAGE.md` | ✅ |
 | 验收清单 | `ACCEPTANCE.md`（本文件） | ✅ |
 | 运行示例产物 | `reports/dashboard.json`、`reports/report_2026-11-11.md`、`reports/signals_2026-11-11.csv` | ✅ 由 `serve --once` 实际生成 |
 
 ## 5. 已知限制与未覆盖项（诚实声明）
 
-1. **真实行情未联网验证**：akshare 为可选依赖，离线环境未安装；
-   `selftest --check-market` 为 warn-only。三级降级链的结构与脏数据过滤已由
-   `FakeProvider` 单测覆盖，但未对真实盘口做回放。
+1. **真实行情链路已联网验证，但未做盘中回放**：`selftest --check-market` 实测命中
+   腾讯源（`source=tencent`，返回 510300 / 159919 收盘快照），证实纯标准库兜底可用；
+   五级降级链（akshare 东财全表 → 东财单只 → 腾讯 → 新浪 → 同花顺）的结构与脏数据
+   过滤由 `FakeProvider` 单测覆盖，**但尚未在连续交易时段做盘口回放**。
 2. **真实钉钉推送未发送**：未配置 Webhook / Secret；签名 URL 构造、
    dry-run、去重、暂停恢复均由单测覆盖，未做真实网络投递。
 3. **分钟 K 路径定序依赖采样密度**：5s 采样下同分钟双触仍无法定序，
@@ -86,15 +91,19 @@
    含成本盈亏平衡胜率 0.75。这是硬规则，不是缺陷。
 7. **`tp_sl_basis` 当前仅支持 `entry_ratio`**：`base_ratio` 口径需重推
    `break_even`，`core/config.py` 会拒绝加载，属于已知的版本边界。
+8. **前端大屏未纳入单测**：`frontend/` 为纯展示层，统计口径复用
+   `build_dashboard_payload()`，已用无头浏览器按 1920×1080 对 DEMO / LIVE / 空库
+   三种状态做视觉与坐标实测；但无自动化测试覆盖，属交付边界。
 
 ## 6. 复现命令
 
 ```bash
-cd /home/yangbo/WorkBuddy/charge
-PYTHON=/home/yangbo/.workbuddy/binaries/python/envs/default/bin/python
+cd RatioGuard                        # 进入仓库根目录
+PYTHON=python                        # 已安装 requirements.txt 的解释器
 
 $PYTHON run_acceptance.py ALL        # PASS 100/100
 $PYTHON tools/static_scan.py         # ok=true, violations=[]
-$PYTHON qctl.py selftest             # ok=true
+$PYTHON qctl.py selftest             # ok=true，6 项
+$PYTHON qctl.py selftest --check-market  # 追加行情链路探测，7 项
 $PYTHON qctl.py status               # 运行态与审计概览
 ```
