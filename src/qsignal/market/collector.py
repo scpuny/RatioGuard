@@ -1,10 +1,14 @@
 """行情采集与脏数据过滤（L1 常驻服务）。
 
 数据源降级链（已核实 ak.fund_etf_spot_em 存在返回条数截断风险）：
-  1) ak.fund_etf_spot_em()          东财 ETF 全表快照
+  1) ak.fund_etf_spot_em()          东财 ETF 全表快照（需 akshare）
   2) push2.eastmoney 单只报价        按 secid 精确查询，不受分页截断影响
-  3) ak.fund_etf_spot_ths()         同花顺 ETF 实时行情
+  3) qt.gtimg.cn 腾讯行情             纯标准库，单次批量取两只标的
+  4) hq.sinajs.cn 新浪行情            纯标准库，单次批量取两只标的
+  5) ak.fund_etf_spot_ths()         同花顺 ETF 实时行情（需 akshare）
 全部失败 -> 本轮跳过并写 run_log，不生成信号。
+3/4 是无第三方依赖兜底：东财域名被网络策略拦截、或 akshare 未安装时仍可采集；
+两源均返回各自报价时间戳，交由 validate_quote 按 max_pair_skew_sec 做对齐校验。
 
 约束：非交易时段不发起请求；每一轮（含被丢弃的）原始行情都落 quote_table。
 """
@@ -12,6 +16,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
@@ -99,6 +104,8 @@ class AkShareProvider:
         for name, handler in (
             ("primary", self._primary),
             ("eastmoney_single", self._single),
+            ("tencent", self._tencent),
+            ("sina", self._sina),
             ("ths", self._ths),
         ):
             try:
@@ -182,6 +189,75 @@ class AkShareProvider:
             code_b=str(cfg["symbol_b"]), price_b=b["price"],
             quote_ts_a=a["ts"], quote_ts_b=b["ts"],
             source="eastmoney_single",
+        )
+
+    @staticmethod
+    def _exchange_prefix(code: str) -> str:
+        """ETF 代码 -> 行情源市场前缀：5/6/9 开头归上交所，其余归深交所。"""
+        return "sh" if code.startswith(("5", "6", "9")) else "sz"
+
+    @staticmethod
+    def _tencent_ts(value: str) -> str | None:
+        """腾讯 14 位时间戳 20261111161453 -> 带 +08:00 的 ISO8601。"""
+        text = str(value or "")
+        if len(text) < 14 or not text[:14].isdigit():
+            return None
+        return (datetime.strptime(text[:14], "%Y%m%d%H%M%S")
+                .replace(tzinfo=ZoneInfo("Asia/Shanghai"))
+                .isoformat(timespec="seconds"))
+
+    def _tencent(self, cfg) -> Quote:
+        """腾讯行情：一次请求取两只 ETF（GBK），纯标准库、无需 akshare。"""
+        a, b = str(cfg["symbol_a"]), str(cfg["symbol_b"])
+        ka, kb = self._exchange_prefix(a) + a, self._exchange_prefix(b) + b
+        req = urllib.request.Request(
+            f"https://qt.gtimg.cn/q={ka},{kb}",
+            headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=self.TIMEOUT) as resp:
+            text = resp.read().decode("gbk", "replace")
+        rows = {key: payload.split("~")
+                for key, payload in re.findall(r'v_(\w+)="([^"]*)"', text)}
+        if ka not in rows or kb not in rows:
+            raise RuntimeError("腾讯行情未返回目标代码")
+        pa, pb = rows[ka], rows[kb]
+        if len(pa) < 31 or len(pb) < 31:
+            raise RuntimeError("腾讯行情字段不完整")
+        price_a, price_b = float(pa[3]), float(pb[3])
+        ts_a, ts_b = self._tencent_ts(pa[30]), self._tencent_ts(pb[30])
+        if not ts_a or not ts_b:
+            raise RuntimeError("腾讯行情时间戳缺失")
+        return Quote(
+            quote_ts=max(ts_a, ts_b), code_a=a, price_a=price_a,
+            code_b=b, price_b=price_b,
+            quote_ts_a=ts_a, quote_ts_b=ts_b, source="tencent",
+        )
+
+    def _sina(self, cfg) -> Quote:
+        """新浪行情：一次请求取两只 ETF（GBK，需 Referer），纯标准库。"""
+        a, b = str(cfg["symbol_a"]), str(cfg["symbol_b"])
+        ka, kb = self._exchange_prefix(a) + a, self._exchange_prefix(b) + b
+        req = urllib.request.Request(
+            f"https://hq.sinajs.cn/list={ka},{kb}",
+            headers={"User-Agent": "Mozilla/5.0",
+                     "Referer": "https://finance.sina.com.cn"})
+        with urllib.request.urlopen(req, timeout=self.TIMEOUT) as resp:
+            text = resp.read().decode("gbk", "replace")
+        rows = {key: payload.split(",")
+                for key, payload in re.findall(r'var hq_str_(\w+)="([^"]*)"', text)}
+        if ka not in rows or kb not in rows:
+            raise RuntimeError("新浪行情未返回目标代码")
+        pa, pb = rows[ka], rows[kb]
+        if len(pa) < 32 or len(pb) < 32:
+            raise RuntimeError("新浪行情字段不完整")
+        price_a, price_b = float(pa[3]), float(pb[3])
+        ts_a = normalize_ts(f"{pa[30]} {pa[31]}")
+        ts_b = normalize_ts(f"{pb[30]} {pb[31]}")
+        if not ts_a or not ts_b:
+            raise RuntimeError("新浪行情时间戳缺失")
+        return Quote(
+            quote_ts=max(ts_a, ts_b), code_a=a, price_a=price_a,
+            code_b=b, price_b=price_b,
+            quote_ts_a=ts_a, quote_ts_b=ts_b, source="sina",
         )
 
     def _ths(self, cfg) -> Quote:
