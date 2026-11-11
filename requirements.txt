@@ -1,0 +1,6 @@
+# 最小运行依赖。Wilson 区间、两比例 z 检验、SQLite、HTTP 签名均使用 Python 标准库。
+PyYAML>=6.0
+
+# 可选（仅 L1 常驻服务实时行情需要，体积大且依赖 pandas；离线自检/单测不安装也能通过）：
+#   akshare>=1.15.0
+# 钉钉推送使用 urllib 标准库实现，无需 requests。

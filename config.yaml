@@ -1,0 +1,61 @@
+# WorkBuddy 半自动量化信号系统 · 运行配置
+# 定位：仅观测 / 记录 / 统计 / 告警。无自动下单、无键鼠自动化、无 OCR。
+# 注意：修改「统计相关键」会生成新的 config_hash，样本自动分组，默认不跨版本合并。
+schema_version: 1
+strategy_version: "pair_ratio_v1"
+
+# ---- 标的与策略 ----
+symbol_a: "510300"
+symbol_b: "159919"
+base_ratio_mode: rolling_median      # fixed | rolling_median
+base_ratio: 1.005                    # fixed 模式生效；rolling_median 时作为无历史数据的初值
+base_ratio_lookback_days: 60
+spread_threshold: 0.003
+tp_sl_basis: entry_ratio             # 当前仅支持 entry_ratio；base_ratio 口径需重推 break_even（方案 3.8）
+take_profit_offset: 0.002
+stop_loss_offset: 0.004
+cost_per_unit: 0.0005                # 双边成本折算（比值单位），进入 break_even
+
+# ---- 统计口径 ----
+confidence_level: 0.95
+min_qualified_samples: 100           # 硬下限 60，见 core/hard_rules.py
+min_qualified_sessions: 20           # 最少覆盖交易日数
+roll_window_1: 100
+roll_window_2: 200
+min_window_samples: 60               # 互斥双窗口各自最小样本
+min_effect_size: 0.10                # 漂移最小效应门槛
+drift_alpha: 0.05
+drift_comparisons: 2                 # Bonferroni 校正的窗口比较次数
+ambiguity_warn_ratio: 0.10           # 路径歧义占比告警线
+hold_rate_warn: 0.40                 # hold 率告警线
+allow_cross_version_merge: false     # 默认禁止跨 config_hash 合并样本
+
+# ---- 交易时段与采集 ----
+timezone: "Asia/Shanghai"
+trade_start: "09:30"
+trade_end: "11:30"
+trade_start2: "13:00"
+trade_end2: "15:00"
+eod_freeze: "15:10"                  # 每日唯一快照冻结时刻
+poll_interval: 5                     # 秒，仅 L1 常驻服务生效
+settle_interval: 60                  # 秒
+max_quote_age_sec: 60                # 行情新鲜度
+max_jump_pct: 0.05                   # 相对上一轮价格突变阈值
+max_pair_skew_sec: 10                # 两标的报价时间对齐容差
+
+# ---- 存储与输出 ----
+db_path: "data/qsignal.db"
+report_dir: "reports"
+
+# ---- 通知 ----
+enable_notify: true
+notify_channel: dingtalk             # dingtalk | desktop | none
+dingtalk_webhook: ""                 # 建议通过环境变量 QSIGNAL_DINGTALK_WEBHOOK 注入
+dingtalk_secret: ""                  # 建议通过环境变量 QSIGNAL_DINGTALK_SECRET 注入
+notify_dedup_sec: 1800
+
+# ---- 模块开关 ----
+enable_collect: true
+enable_signal: true
+enable_settle: true
+enable_snapshot: true

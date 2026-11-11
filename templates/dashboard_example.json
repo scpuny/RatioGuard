@@ -1,0 +1,58 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-11-11T15:10:00+08:00",
+  "as_of_snapshot": "2026-11-11T15:10:00+08:00",
+  "config_hash": "a1b2c3d4e5f6",
+  "strategy_version": "pair_ratio_v1",
+  "config_version_tag": "pair_ratio_v1@a1b2c3d4e5f6",
+  "system": {
+    "pause_trade_alert": false,
+    "qualified": true,
+    "qualified_reason": "qualified",
+    "qualified_source": "frozen"
+  },
+  "snapshots": {
+    "full": {
+      "scope": "full", "config_hash": "a1b2c3d4e5f6",
+      "strategy_version": "pair_ratio_v1", "n": 150, "win_cnt": 135,
+      "loss_cnt": 15, "hold_cnt": 10, "ambiguous_cnt": 3,
+      "effective_sessions": 20, "win_rate": 0.9, "break_even": 0.75,
+      "ci_low": 0.8415, "ci_high": 0.9402, "qualified": true,
+      "qualified_reason": "qualified", "ambiguity_rate": 0.02,
+      "hold_rate": 0.0625, "cost_per_unit": 0.0005
+    },
+    "roll100": {
+      "scope": "roll100", "config_hash": "a1b2c3d4e5f6",
+      "strategy_version": "pair_ratio_v1", "n": 100, "win_cnt": 88,
+      "loss_cnt": 12, "hold_cnt": 6, "ambiguous_cnt": 2,
+      "effective_sessions": 14, "win_rate": 0.88, "break_even": 0.75,
+      "ci_low": 0.7996, "ci_high": 0.9327, "qualified": true,
+      "qualified_reason": "qualified", "ambiguity_rate": 0.02,
+      "hold_rate": 0.0566, "cost_per_unit": 0.0005
+    },
+    "roll200": {
+      "scope": "roll200", "config_hash": "a1b2c3d4e5f6",
+      "strategy_version": "pair_ratio_v1", "n": 150, "win_cnt": 135,
+      "loss_cnt": 15, "hold_cnt": 10, "ambiguous_cnt": 3,
+      "effective_sessions": 20, "win_rate": 0.9, "break_even": 0.75,
+      "ci_low": 0.8415, "ci_high": 0.9402, "qualified": true,
+      "qualified_reason": "qualified", "ambiguity_rate": 0.02,
+      "hold_rate": 0.0625, "cost_per_unit": 0.0005
+    }
+  },
+  "quality": {
+    "ambiguity_rate": 0.02, "ambiguous_cnt": 3,
+    "hold_rate": 0.0625, "hold_cnt": 10,
+    "effective_sessions": 20,
+    "ambiguity_warn": false, "hold_rate_warn": false
+  },
+  "drift": {
+    "status": "ok", "window_size": 100,
+    "n1": 100, "k1": 88, "p1": 0.88,
+    "n2": 50, "k2": 47, "p2": 0.94,
+    "z_stat": -1.12, "z_critical": 2.2414,
+    "effect_size": 0.06, "min_effect_size": 0.1,
+    "drift_alert": false
+  },
+  "disclaimer": "⚠️ 统计结果仅基于当前已收集样本，是历史样本快照，不代表未来行情概率分布，市场结构变化会直接失效；半自动模式，请人工复核行情、流动性、ETF 申赎状态、券源与交易成本后再决定是否操作，不构成投资建议。本信号未纳入统计样本，历史统计不构成对其结果的推断。"
+}

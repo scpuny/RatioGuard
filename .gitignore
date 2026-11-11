@@ -1,0 +1,47 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# ---- 运行时数据与数据库（SQLite WAL 伴生文件）----
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.log
+
+# ---- 报表产物（由 qctl.py report / serve 生成；示例见 templates/）----
+reports/
+
+# ---- 密钥与本地环境配置（示例文件保留）----
+deploy/qsignal.env
+*.env.local
+.env
+
+# ---- WorkBuddy 本地项目数据 / 私人笔记（不删除，仅不纳入版本库）----
+.workbuddy/
+
+# ---- 编辑器与操作系统 ----
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# ---- 临时文件 ----
+*.tmp
+*.bak
+*.orig
+~$*

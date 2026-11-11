@@ -1,0 +1,33 @@
+# WorkBuddy 半自动量化信号系统 · L1 常驻服务（模式 A）
+# 安装：sudo cp deploy/qsignal.service /etc/systemd/system/qsignal.service
+#       sudo systemctl daemon-reload && sudo systemctl enable --now qsignal
+# 注意：路径 / 用户 / Python 解释器需按目标机器调整后启用。
+#
+# 该服务只做 观测 / 记录 / 统计 / 告警，无任何委托成交、键鼠自动化或 OCR 动作。
+
+[Unit]
+Description=WorkBuddy Quantitative Signal Observer (L1 resident, observe-only)
+Documentation=file:///home/yangbo/WorkBuddy/charge/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=yangbo
+Group=yangbo
+WorkingDirectory=/home/yangbo/WorkBuddy/charge
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=/home/yangbo/WorkBuddy/charge/src
+# 建议通过 environment file 注入，不要把密钥写进 unit 或 config.yaml
+EnvironmentFile=-/home/yangbo/WorkBuddy/charge/deploy/qsignal.env
+ExecStart=/home/yangbo/.workbuddy/binaries/python/envs/default/bin/python /home/yangbo/WorkBuddy/charge/qctl.py serve
+Restart=always
+RestartSec=10
+# 优雅退出：SIGTERM 由 qctl.py 注册 handler，完成当前 tick 后退出
+KillSignal=SIGTERM
+TimeoutStopSec=30
+StandardOutput=append:/home/yangbo/WorkBuddy/charge/data/service.log
+StandardError=append:/home/yangbo/WorkBuddy/charge/data/service.log
+
+[Install]
+WantedBy=multi-user.target

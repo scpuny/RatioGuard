@@ -1,0 +1,61 @@
+{
+  "name": "qsignal_dashboard_v1",
+  "description": "动态大屏 JSON 指标输出结构。由 report/renderer.py::build_dashboard_payload 生成，write_dashboard 落盘。新增口径：歧义样本占比、hold 率、互斥窗口检验 z 值、配置版本标记。",
+  "producer": "python qsignal.py dashboard",
+  "fields": {
+    "schema_version": {"type": "string", "desc": "结构版本，当前 1.0"},
+    "generated_at": {"type": "string", "desc": "生成时间 ISO8601 +08:00"},
+    "as_of_snapshot": {"type": "string|null", "desc": "引用的 15:10 冻结快照时间；未冻结为 null"},
+    "config_hash": {"type": "string", "desc": "统计口径配置哈希（12 位），样本按此分组"},
+    "strategy_version": {"type": "string", "desc": "策略版本标识"},
+    "config_version_tag": {"type": "string", "desc": "配置版本标记，格式 strategy_version@config_hash"},
+    "system": {
+      "pause_trade_alert": {"type": "boolean", "desc": "漂移暂停开关，持久化于 system_state"},
+      "qualified": {"type": "boolean", "desc": "冻结快照的 qualified；未冻结时回退到实时计算并标注 source"},
+      "qualified_reason": {"type": "string", "desc": "insufficient_sample / insufficient_sessions / drift_paused / ci_low_below_break_even / qualified"},
+      "qualified_source": {"type": "string", "desc": "frozen | live"}
+    },
+    "snapshots": {
+      "full": {"type": "object", "desc": "全量快照"},
+      "roll100": {"type": "object", "desc": "最近 100 笔有效样本"},
+      "roll200": {"type": "object", "desc": "最近 200 笔有效样本"},
+      "_each": {
+        "n": "有效样本数 win+loss（hold 不计入）",
+        "win_cnt / loss_cnt / hold_cnt": "计数",
+        "win_rate": "胜率",
+        "break_even": "含成本盈亏平衡胜率 (sl+cost)/(tp+sl)",
+        "ci_low / ci_high": "Wilson 95% 置信区间",
+        "qualified / qualified_reason": "硬分支判定结果",
+        "ambiguous_cnt / ambiguity_rate": "路径歧义样本数与占比",
+        "effective_sessions": "覆盖交易日数",
+        "config_hash / strategy_version / cost_per_unit": "可复现输入参数"
+      }
+    },
+    "quality": {
+      "ambiguity_rate": {"type": "number", "desc": "【新增】歧义样本占比，胜率高估上界提示"},
+      "ambiguous_cnt": {"type": "integer", "desc": "歧义样本数"},
+      "hold_rate": {"type": "number", "desc": "【新增】hold 占已闭环信号比例，hold 率高说明信号钝化"},
+      "hold_cnt": {"type": "integer", "desc": "hold 样本数"},
+      "effective_sessions": {"type": "integer", "desc": "有效交易日跨度"},
+      "ambiguity_warn": {"type": "boolean", "desc": "歧义率是否超过 ambiguity_warn_ratio"},
+      "hold_rate_warn": {"type": "boolean", "desc": "hold 率是否超过 hold_rate_warn"}
+    },
+    "drift": {
+      "status": {"type": "string", "desc": "ok | insufficient | alert | config_change"},
+      "window_size": {"type": "integer|null", "desc": "互斥窗口长度 W"},
+      "n1 / k1 / p1": "最近 W 笔有效样本数 / 盈利数 / 胜率",
+      "n2 / k2 / p2": "其前 W 笔（与 W1 不重叠）",
+      "z_stat": {"type": "number|null", "desc": "【新增】互斥窗口两比例检验 z 值"},
+      "z_critical": {"type": "number|null", "desc": "Bonferroni 校正后临界值"},
+      "effect_size": {"type": "number|null", "desc": "|p1-p2|"},
+      "min_effect_size": {"type": "number|null", "desc": "最小效应门槛"},
+      "drift_alert": {"type": "boolean", "desc": "是否触发漂移告警"}
+    },
+    "disclaimer": {"type": "string", "desc": "完整版免责声明，强制携带"}
+  },
+  "notes": [
+    "统计仅对已收集样本负责，是历史样本快照，不预测未来、不保证收益",
+    "盘中不刷新快照；qualified 只取最近一次 15:10 冻结结果",
+    "参数变更生成新 config_hash，样本默认不跨版本合并，变更事件不误判为漂移"
+  ]
+}
