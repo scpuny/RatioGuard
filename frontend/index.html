@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RatioGuard · 半自动量化信号监控大屏</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="viewport">
+  <div class="screen">
+    <!-- ============ 顶部状态栏 ============ -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo">
+          <span class="logo-ring"></span>
+          <span class="logo-core">RG</span>
+        </div>
+        <div class="brand-text">
+          <h1>RATIOGUARD</h1>
+          <p>半自动量化信号监控大屏 · A股ETF配对统计套利观测系统</p>
+        </div>
+      </div>
+
+      <div class="top-right">
+        <div class="sysstatus">
+          <div id="chip-fit" class="chip chip-version">适配 —</div>
+          <div id="chip-live" class="chip chip-off"><span class="dot"></span>连接中</div>
+          <div id="chip-qualified" class="chip chip-muted">放行状态 —</div>
+          <div id="chip-pause" class="chip chip-ok">推送正常</div>
+          <div id="chip-version" class="chip chip-version">v —</div>
+          <!-- 数据源标识 + 真实行情只读探针：后端不支持时由 JS 自动隐藏，界面保持原样 -->
+          <div id="chip-source" class="chip chip-source" hidden></div>
+          <div id="chip-market" class="chip chip-market" hidden></div>
+        </div>
+
+        <div class="clock">
+          <div id="clock-time" class="clock-time">--:--:--</div>
+          <div id="clock-date" class="clock-date">----/--/--</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- ============ 主体三栏 ============ -->
+    <main class="grid">
+      <!-- 左列 -->
+      <section class="col col-left">
+        <div class="panel metrics">
+          <div class="panel-title"><span class="bullet"></span>核心指标 <span class="live-dot"></span></div>
+          <div class="metric-alert" title="历史样本快照：高胜率不代表未来，套利策略在市场结构切换时会快速失效；且本面板统计是配对套利、依赖融券，本金门槛极高，小资金难以参与。">
+            <span class="ma-tag">⚠ 历史快照</span>
+            <span class="ma-text">高胜率不代表未来 · 结构切换即失效 · 配对套利依赖融券 / 本金门槛高</span>
+          </div>
+          <div class="metric-grid" id="metric-grid">
+            <!-- 指标卡由 JS 注入 -->
+          </div>
+        </div>
+
+        <div class="panel gate">
+          <div class="panel-title"><span class="bullet"></span>信号放行状态</div>
+          <div class="gate-body" id="gate-body">
+            <div class="gate-badge gate-muted" id="gate-badge">—</div>
+            <div class="gate-detail" id="gate-detail">
+              <div class="kv"><span>判定原因</span><b id="gate-reason">—</b></div>
+              <div class="kv"><span>快照来源</span><b id="gate-source">—</b></div>
+              <div class="kv"><span>交易推送</span><b id="gate-pause">—</b></div>
+            </div>
+          </div>
+          <div class="gate-chain" id="gate-chain"><!-- JS 注入判定链 --></div>
+        </div>
+
+        <div class="panel quality">
+          <div class="panel-title"><span class="bullet"></span>质量指标与放行判定</div>
+          <div class="quality-body" id="quality-body"><!-- JS 注入 --></div>
+        </div>
+      </section>
+
+      <!-- 中列 -->
+      <section class="col col-center">
+        <div class="panel scopes">
+          <div class="panel-title"><span class="bullet"></span>三档统计快照对比
+            <span class="sub">full · roll100 · roll200</span></div>
+          <div class="scope-list" id="scope-list"><!-- JS 注入 --></div>
+        </div>
+
+        <div class="panel drift">
+          <div class="panel-title"><span class="bullet"></span>策略分布漂移监控
+            <span class="sub">互斥窗口两比例检验 · Bonferroni校正</span></div>
+          <div class="drift-body">
+            <div class="drift-gauge" id="drift-gauge"><!-- SVG 注入 --></div>
+            <div class="drift-info" id="drift-info"><!-- JS 注入 --></div>
+          </div>
+          <div class="drift-history" id="drift-history"><!-- 最近 z 值趋势 --></div>
+        </div>
+
+      </section>
+
+      <!-- 右列 -->
+      <section class="col col-right">
+        <div class="panel signals">
+          <div class="panel-title"><span class="bullet"></span>最近信号
+            <span class="sub" id="signals-count">0 条</span></div>
+          <div class="table-wrap">
+            <table class="grid-table">
+              <thead>
+                <tr><th>时间</th><th>类型</th><th>状态</th><th>结果</th><th>歧义</th><th>比值</th></tr>
+              </thead>
+              <tbody id="signals-body"></tbody>
+            </table>
+          </div>
+          <div class="signal-foot" id="signal-foot"><!-- JS 注入汇总 --></div>
+        </div>
+
+        <div class="panel driftlog">
+          <div class="panel-title"><span class="bullet"></span>漂移检验记录
+            <span class="sub" id="driftlog-count">0 条</span></div>
+          <div class="table-wrap">
+            <table class="grid-table">
+              <thead>
+                <tr><th>时间</th><th>z值</th><th>效应量</th>
+                  <th class="th-tip" title="W1 = 旧窗口胜率，W2 = 新窗口胜率；两组互斥、无重叠">W1胜率</th>
+                  <th class="th-tip" title="W1 = 旧窗口胜率，W2 = 新窗口胜率；两组互斥、无重叠">W2胜率</th>
+                  <th>状态</th></tr>
+              </thead>
+              <tbody id="driftlog-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="panel audit">
+          <div class="panel-title"><span class="bullet"></span>运行 / 审计日志</div>
+          <div class="log-wrap" id="log-body"></div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ============ 底部免责声明 ============ -->
+    <footer class="disclaimer">
+      <span class="disc-tag">免责声明</span>
+      <div class="disc-track"><div class="disc-text" id="disclaimer-text">—</div></div>
+    </footer>
+  </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
