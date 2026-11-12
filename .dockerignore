@@ -1,0 +1,20 @@
+.git/
+.workbuddy/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.DS_Store
+*.log
+
+# 运行期数据全部走宿主机卷，绝不打进镜像
+data/
+reports/
+logs/
+*.db
+*.db-wal
+*.db-shm
+
+# 本机开发产物
+frontend/demo_qsignal.db
+docs/*.png

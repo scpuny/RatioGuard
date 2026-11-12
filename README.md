@@ -36,6 +36,9 @@ sql/schema.sql              6 张表建表语句
 qctl.py                     统一 CLI（serve / tick / freeze / report / status ...）
 run_acceptance.py           M0→M5 分阶段验收入口
 requirements.txt            最小依赖（PyYAML；akshare 可选）
+Dockerfile                  L1 采集服务与只读大屏共用的最小运行镜像
+docker-compose.yml          collector + web 双容器常驻部署（7×24 服务器）
+.dockerignore               运行期数据不打进镜像
 src/qsignal/
   core/       配置 / DB / Wilson / 公式 / 硬规则 / 免责 / 审计 / 日历 / 自检 / 静态扫描
   market/     行情采集与脏数据过滤（五级降级链，含腾讯/新浪纯标准库兜底）
@@ -50,7 +53,9 @@ frontend/       科技蓝只读大屏：serve.py（HTTP/API）、index.html / st
 tests/         M0–M5 单元测试与端到端验收
 skills/        6 个 SKILL.md（人类可读 SOP；非 WorkBuddy Skill，从未被加载）
 templates/     钉钉模板、免责副本、大屏 schema 与示例
-deploy/        systemd unit、环境变量样例、L2 设计备选（未启用）、部署说明
+scripts/       backup_db.py（在线备份）/ watchdog.sh（兜底拉起）/ tunnel.sh（可选隧道）
+deploy/        DOCKER.md（Docker 部署手册）、systemd unit、环境变量样例、
+               L2 设计备选（未启用）、部署说明
 tools/         静态自检扫描器与禁用模式配置
 USAGE.md       使用手册（安装 / 配置 / 启动 / 大屏 / 日常操作 / 排障）
 ACCEPTANCE.md  验收清单与规则对照
@@ -68,6 +73,12 @@ $PYTHON qctl.py serve --once        # 单轮编排（离线可跑）
 $PYTHON qctl.py status              # 运行态与最近冻结快照
 $PYTHON frontend/serve.py           # 可选：启动科技蓝大屏 http://127.0.0.1:8787/
 ```
+
+> **7×24 常驻部署（推荐）**：L1 是 5s 轮询进程，开发机白天休眠会让采集链路断供。
+> 把 `collector` + `web` 部署到常开服务器：
+> `printf 'UID=%s\nGID=%s\n' "$(id -u)" "$(id -g)" > .env`
+> → `docker-compose build collector && docker-compose up -d`
+> → 局域网访问 `http://<服务器IP>:8788/`。完整步骤见 `deploy/DOCKER.md`。
 
 > `python3` 默认可能指向未装 PyYAML 的解释器；先 `pip install -r requirements.txt`，
 > 或使用已装依赖的托管 venv（路径见 `USAGE.md` §0）。

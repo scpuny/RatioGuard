@@ -10,7 +10,9 @@
   1. 页面 URL 加 ?source=live / ?source=demo —— 前端透传给 /api/state，
      **无需重启服务**即可即时切换数据源；
   2. 进程启动参数 --db <path> 或 --demo —— 决定无参数时的默认库；
-  3. 环境变量 QSIGNAL_DB —— 部署时覆盖默认库路径。
+  3. 环境变量 QSIGNAL_DB —— 部署时覆盖默认库路径；
+     QSIGNAL_DEMO_DB —— 覆盖演示库路径（Docker 部署时指向持久化卷，
+     因为 init_db 会执行 PRAGMA journal_mode=WAL，只读单文件挂载会失败）。
 
 /api/market 是只读真实行情探测：直接复用 L1 采集的 AkShareProvider 多源降级链
 （akshare 东财全表 -> 东财单只 -> 腾讯 -> 新浪 -> 同花顺），纯标准库亦可工作、
@@ -45,7 +47,9 @@ from qsignal.market.collector import AkShareProvider  # noqa: E402
 from qsignal.report.renderer import build_dashboard_payload  # noqa: E402
 
 DEFAULT_PORT = 8787
-DEMO_DB = HERE / "demo_qsignal.db"
+# 演示库需可写：init_db 会执行 PRAGMA journal_mode=WAL，只读单文件挂载会报错。
+# Docker 部署时把演示库放进持久化卷并用 QSIGNAL_DEMO_DB 指过去。
+DEMO_DB = Path(os.environ.get("QSIGNAL_DEMO_DB") or str(HERE / "demo_qsignal.db"))
 TZ = "Asia/Shanghai"
 MARKET_TTL = 20                 # 行情探测缓存秒数，避免前端 5s 刷新打爆外部接口
 OVERRIDE_DB: str | None = None  # 由 --db / --demo / QSIGNAL_DB 指定的进程级默认库

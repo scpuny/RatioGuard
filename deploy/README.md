@@ -18,6 +18,11 @@ Agent 会话，无法承担 5s 轮询与事件级结算。高频链路必须放�
 **部署时只需启动 L1 与可选的 `frontend/` 大屏，无需配置任何 WorkBuddy 能力**；
 `skills/` 是普通 SOP 文档目录，不参与部署、不需要注册。
 
+**两种等价落地方式**：① systemd 直跑（本文件 §3）；② Docker Compose 双容器
+（`deploy/DOCKER.md`，推荐用于 7×24 常开服务器）。两者只是承载同一个 L1 进程，
+统计口径完全一致。开发机白天休眠会让 5s 采集链路断供，要积累真实样本必须用
+常开机器，即方式 ②。
+
 ## 2. 环境准备
 
 ```bash
@@ -69,6 +74,20 @@ journalctl -u qsignal -f
 
 日志另写 `data/service.log`；业务全链路日志在 SQLite `run_log` 表。
 
+### 3.1 Docker Compose（推荐，常开服务器）
+
+```bash
+printf 'UID=%s\nGID=%s\n' "$(id -u)" "$(id -g)" > .env   # 容器以宿主机 uid 运行
+docker-compose config --quiet
+docker-compose build collector
+docker-compose up -d
+docker-compose ps
+```
+
+`collector` 与 `web` 共用镜像，数据在宿主机卷 `./data`；默认大屏
+`http://<服务器IP>:8788/`。代码改动需 `build collector && up -d`。
+完整前置条件、镜像加速、备份/watchdog、排障见 **`deploy/DOCKER.md`**。
+
 ## 4. 配置与密钥
 
 - 唯一运行配置：`config.yaml`（所有参数集中于此）；
@@ -78,8 +97,9 @@ journalctl -u qsignal -f
 - `eod_freeze` 固定 `15:10`、`min_qualified_samples >= 60`、
   `min_qualified_sessions >= 10`、`min_window_samples >= 30` 为硬下限，
   配置下调会被 `core/hard_rules.py` 拒绝；
-- 首次接入真实行情前确认 `base_ratio` 初值：它属于 `STAT_KEYS`，
-  改它会切分样本分组，要改必须在积累样本之前（详见 `USAGE.md` §6.4）。
+- `base_ratio=1.005` 只是 `quote_table` 为空时 `rolling_median` 的初值，首条行情
+  入库后 `estimate_base_ratio()` 即自校准到真实比价，通常无需修改；该键属于
+  `STAT_KEYS`，确要改必须在积累样本之前（详见 `USAGE.md` §6.4）。
 
 ## 5. 日常运维
 
@@ -102,9 +122,13 @@ $PYTHON frontend/seed_demo.py      # 首次生成离线演示库（*.db 不随�
 $PYTHON frontend/serve.py          # http://127.0.0.1:8787/
 ```
 
-- 默认只监听 `127.0.0.1`。**不要直接改成 `0.0.0.0` 暴露公网**：服务无鉴权，
-  `/api/state` 的 `meta` 会暴露数据库绝对路径、库大小与各表行数。
-  需要远程访问时请走反向代理并加访问控制。
+- 本地直跑默认只监听 `127.0.0.1`；Docker 部署按 `docker-compose.yml` 监听
+  `0.0.0.0:8788`，可信局域网可直接访问 `http://<服务器IP>:8788/`。
+  服务**无鉴权**，`/api/state` 的 `meta` 会暴露数据库绝对路径、库大小与各表行数，
+  因此仅限内网使用，**禁止路由器端口转发 / 公网反向代理**。
+  更严格隔离可在 `web.ports` 用三段式 `"127.0.0.1:8788:8787"`（首段是宿主机绑定
+  IP；默认部署保持两段式 `"8788:8787"`），只走 SSH 隧道（`scripts/tunnel.sh`，
+  需显式设置 `RG_SSH_HOST`）。详见 `deploy/DOCKER.md`。
 - 大屏只读同一个 SQLite，不修改统计 / 放行 / 快照口径；`/api/market` 复用 L1 的
   五级行情降级链，20s 缓存，不写库、不生成信号、不进统计。
 - 页面加 `?source=live` / `?source=demo` 可即时切库，无需重启；生产环境建议
@@ -116,6 +140,9 @@ $PYTHON frontend/serve.py          # http://127.0.0.1:8787/
 
 - 库文件：`data/qsignal.db`（WAL 模式，备份时连 `-wal` / `-shm` 一起处理，
   或使用 `sqlite3 .backup`）；
+- Docker 部署已内置 `scripts/backup_db.py`（`sqlite3.Connection.backup()`，WAL 安全，
+  每工作日 16:30、保留 14 份）与 `scripts/watchdog.sh`（每 5 分钟兜底拉起容器），
+  cron 配置见 `deploy/DOCKER.md`；
 - 报表与 CSV：`reports/`；
 - 演示库 `frontend/demo_qsignal.db` 可随时用 `seed_demo.py` 重建，无需备份；
 - 升级前先跑 `run_acceptance.py ALL`，升级后跑 `qctl.py status` 与

@@ -180,16 +180,37 @@
     // 放行判定链：逐项硬规则校验
     const be = Number(full.break_even ?? 0);
     const ciLow = Number(full.ci_low ?? 0);
+    // 空库（N=0）时统计类数值不可估计：显示「—」并置 na 灰点。
+    // 否则 Number(null)=0 会把 CI 下限显示成 0.00%，还会让 Hold 率 / 歧义率
+    // 因 0 < 阈值 被误判成「达标」而亮绿灯。
+    const hasSample = Number(full.n ?? 0) > 0;
     const checks = [
       { name: "有效样本 N ≥ 100", pass: Number(full.n ?? 0) >= 100, val: full.n ?? 0 },
       { name: "覆盖交易日 ≥ 20", pass: Number(full.effective_sessions ?? 0) >= 20, val: full.effective_sessions ?? 0 },
-      { name: "Wilson CI下限 > 盈亏平衡", pass: ciLow > be, val: `${pct(ciLow)} > ${pct(be)}` },
+      // 名称写的是「要求满足的条件」，右侧只展示实际比较结果：
+      // 通过 86.88% > 75.00% / 未通过 60.00% ≤ 75.00%（条件是严格大于，
+      // 故未通过统一用 ≤），不再出现恒假的「0.00% > 75.00%」。
+      {
+        name: "Wilson CI下限 > 盈亏平衡",
+        pass: hasSample && ciLow > be, na: !hasSample,
+        val: hasSample
+          ? `${pct(ciLow)} ${ciLow > be ? ">" : "≤"} ${pct(be)}`
+          : `— / 需 > ${pct(be)}`,
+        tip: `判定条件：Wilson 95% 区间下限须严格大于含成本盈亏平衡胜率 ${pct(be)}；`
+           + `当前 CI 下限 ${hasSample ? pct(ciLow) : "样本不足，无法估计"}。`,
+      },
       { name: "策略分布未漂移", pass: !paused, val: paused ? "已暂停" : "正常" },
-      { name: "Hold 率 < 40%", pass: Number(full.hold_rate ?? 0) < 0.40, val: pct(full.hold_rate) },
-      { name: "歧义率 < 10%", pass: Number(full.ambiguity_rate ?? 0) < 0.10, val: pct(full.ambiguity_rate) },
+      {
+        name: "Hold 率 < 40%", pass: hasSample && Number(full.hold_rate ?? 0) < 0.40,
+        na: !hasSample, val: hasSample ? pct(full.hold_rate) : "—",
+      },
+      {
+        name: "歧义率 < 10%", pass: hasSample && Number(full.ambiguity_rate ?? 0) < 0.10,
+        na: !hasSample, val: hasSample ? pct(full.ambiguity_rate) : "—",
+      },
     ];
     $("gate-chain").innerHTML = checks.map((c) => `
-      <div class="chain-item ${c.pass ? "ok" : "bad"}">
+      <div class="chain-item ${c.na ? "na" : (c.pass ? "ok" : "bad")}"${c.tip ? ` title="${esc(c.tip)}"` : ""}>
         <span class="chain-dot"></span>
         <span class="chain-name">${c.name}</span>
         <span class="chain-val">${c.val}</span>

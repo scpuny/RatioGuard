@@ -283,10 +283,14 @@ body {
 .chain-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; box-shadow: 0 0 7px currentColor; }
 .chain-item.ok   { color: var(--green); }
 .chain-item.bad  { color: var(--red);   border-color: rgba(255,93,115,.35); }
+/* na：空库 / 样本不足，无法判定，既不是达标也不是违规 */
+.chain-item.na   { color: var(--dim); border-color: rgba(70,97,138,.35); }
 .chain-item.ok  .chain-dot  { background: var(--green); }
 .chain-item.bad .chain-dot  { background: var(--red); }
+.chain-item.na  .chain-dot  { background: var(--dim); box-shadow: none; }
 .chain-name { color: var(--muted); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chain-val { font-family: var(--mono); font-weight: 600; color: var(--txt); flex: 0 0 auto; white-space: nowrap; }
+.chain-item.na .chain-val { color: var(--dim); }
 
 /* 信号汇总条 */
 .signal-foot {

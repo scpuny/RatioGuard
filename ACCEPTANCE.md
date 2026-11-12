@@ -62,7 +62,10 @@
 | 动态大屏结构 | `templates/dashboard_schema.json` + `dashboard_example.json` | ✅ |
 | 科技蓝只读大屏 | `frontend/`（`serve.py` / `index.html` / `styles.css` / `app.js` / `seed_demo.py`） | ✅ 本轮新增 |
 | 静态自检 | `tools/static_scan.py` + `tools/forbidden_patterns.json` | ✅ |
-| systemd unit | `deploy/qsignal.service` + `deploy/qsignal.env.example` | ✅ |
+| systemd unit | `deploy/qsignal.service` + `deploy/qsignal.env.example` | ✅ 仅交付文件，未在目标机启用 |
+| Docker 常驻部署 | `Dockerfile` + `docker-compose.yml` + `.dockerignore` | ✅ 本轮新增，已在内网服务器构建并启动 |
+| 运维脚本 | `scripts/backup_db.py` / `watchdog.sh` / `tunnel.sh` | ✅ 本轮新增 |
+| Docker 部署手册 | `deploy/DOCKER.md` | ✅ 本轮新增 |
 | L2 编排设计备选（非运行能力） | `deploy/workbuddy-automation.md`（3 条 RRULE 与 prompt） | ⚪ 文档已交付，automation 未创建、不推荐启用 |
 | 部署说明 | `deploy/README.md` | ✅ |
 | 顶层说明 | `README.md` | ✅ |
@@ -73,15 +76,20 @@
 ## 5. 已知限制与未覆盖项（诚实声明）
 
 1. **真实行情链路已联网验证，但未做盘中回放**：`selftest --check-market` 实测命中
-   腾讯源（`source=tencent`，返回 510300 / 159919 收盘快照），证实纯标准库兜底可用；
+   腾讯源（`source=tencent`，返回 510300 / 159919 收盘快照），Docker 容器内自检
+   另命中 `eastmoney_single`，证实纯标准库兜底可用；
    五级降级链（akshare 东财全表 → 东财单只 → 腾讯 → 新浪 → 同花顺）的结构与脏数据
    过滤由 `FakeProvider` 单测覆盖，**但尚未在连续交易时段做盘口回放**。
 2. **真实钉钉推送未发送**：未配置 Webhook / Secret；签名 URL 构造、
    dry-run、去重、暂停恢复均由单测覆盖，未做真实网络投递。
 3. **分钟 K 路径定序依赖采样密度**：5s 采样下同分钟双触仍无法定序，
    已按规则保守判 loss，但真实盘中行情未回放验证歧义率量级。
-4. **systemd 未在目标机器启用**：仅交付 unit 文件与部署步骤，
-   `ExecStart` / `User` / `WorkingDirectory` 需按目标环境调整。
+4. **常驻部署已实测，但未纳入自动验收**：Docker Compose 双容器
+   （`collector` + `web`）已在内网 7×24 常开服务器完成构建、启动、健康检查、
+   四个接口 200、容器停摆恢复、在线备份与 cron 验证；容器内
+   `selftest --check-market` 7 项全过。这些均为人工实测，**无自动化用例覆盖**。
+   systemd 仍只交付 unit 文件，`ExecStart` / `User` / `WorkingDirectory` 需按目标
+   环境调整。部署手册见 `deploy/DOCKER.md`。
 5. **WorkBuddy 相关能力为设计备选，运行时不依赖**：`deploy/workbuddy-automation.md`
    的 3 条 automation **从未创建、当前不推荐启用**（L1 已产出全部原始报表，
    L2 唯一增量是 LLM 摘要，有持续 token 成本与限流风险）；

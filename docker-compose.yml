@@ -1,0 +1,81 @@
+# RatioGuard 常驻部署：collector 是唯一数据生产者，web 只读同一个 SQLite。
+# 大屏监听 8788，可信局域网内可直接访问 http://<服务器IP>:8788。
+# 服务无鉴权，仅限内网使用；切勿做路由器端口转发或公网反向代理。
+# 默认 "8788:8787" 是两段式（宿主机端口:容器端口），监听宿主机所有网卡。
+# 若需严格隔离，可用三段式 "127.0.0.1:8788:8787"（首段为宿主机绑定 IP），
+# 只绑定回环地址，并配合 scripts/tunnel.sh 走 SSH 隧道。
+#
+#   docker-compose build collector
+#   docker-compose up -d
+#   docker-compose logs -f collector
+#
+# .env 由部署脚本生成（UID/GID/可选钉钉配置），不要让容器以 root 写宿主机卷。
+
+x-common: &common
+  image: ratioguard:latest
+  restart: always
+  user: "${UID:-1000}:${GID:-1000}"
+  environment: &common-env
+    TZ: Asia/Shanghai
+    QSIGNAL_DINGTALK_WEBHOOK: "${QSIGNAL_DINGTALK_WEBHOOK:-}"
+    QSIGNAL_DINGTALK_SECRET: "${QSIGNAL_DINGTALK_SECRET:-}"
+  volumes: &common-vol
+    - ./data:/app/data
+    - ./reports:/app/reports
+    - ./logs:/app/logs
+    - /etc/localtime:/etc/localtime:ro
+  stop_grace_period: 30s
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  # ---- L1：5s 采集 / 信号 / 结算 / 15:10 冻结 / 漂移 / 报表 ----
+  collector:
+    <<: *common
+    container_name: ratioguard-collector
+    build: .
+    command: ["python", "qctl.py", "serve", "--check-market"]
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /app/data/qsignal.db"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+  # ---- 只读大屏：不写业务表，不生成信号，不参与放行判定 ----
+  web:
+    <<: *common
+    container_name: ratioguard-web
+    depends_on:
+      - collector
+    command:
+      - python
+      - frontend/serve.py
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8787"
+      - --db
+      - data/qsignal.db
+    environment:
+      <<: *common-env
+      QSIGNAL_DB: /app/data/qsignal.db
+      # ./data 已整目录挂载；演示库必须可写（init_db 会设 WAL）
+      QSIGNAL_DEMO_DB: /app/data/demo_qsignal.db
+    volumes:
+      - ./data:/app/data
+      - ./reports:/app/reports
+      - ./logs:/app/logs
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      # 0.0.0.0:8788 -> 容器 8787；仅可信内网，勿映射到公网
+      - "8788:8787"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8787/',timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

@@ -249,7 +249,9 @@ $PYTHON frontend/serve.py --port 8788 --db data/qsignal.db
 ```
 
 参数：`--host`（默认 127.0.0.1，仅本机监听）、`--port`（默认 8787）、`--db PATH`、
-`--demo`；环境变量 `QSIGNAL_DB` 也可指定默认库。页面每 5s 自动拉数据。
+`--demo`；环境变量 `QSIGNAL_DB` 指定默认真实库、`QSIGNAL_DEMO_DB` 指定演示库
+（Docker 部署时必须指向**可写**的持久化卷，因为 `init_db` 会执行
+`PRAGMA journal_mode=WAL`）。页面每 5s 自动拉数据。
 **改 html / css / js 刷新浏览器即可；改 `serve.py` 或采集链必须重启 Python 进程。**
 
 #### 演示库
@@ -305,10 +307,12 @@ $PYTHON frontend/serve.py                 # 另开终端看大屏（?source=live
 把回测数据伪装成实盘样本快照会破坏无前视与冻结口径。若用 `qctl.py freeze` 手动补冻，
 快照会标记 `created_by=manual`。
 
-> ⚠️ **首次接入注意**：真实比价（如 `4.150 / 4.333 ≈ 0.9578`）与 `config.yaml` 的
-> `base_ratio=1.005`（`rolling_median` 初值）可能相差几个百分点，首条有效行情入库前
-> 会误触发一次 `spread_short`，之后中位数自动校准。`base_ratio` 属于 `STAT_KEYS`，
-> 改动会切分 `config_hash`、分裂样本分组，**要改必须在积累样本之前改**。
+> **关于 `base_ratio` 初值**：`config.yaml` 的 `1.005` 仅在 `quote_table` 为空时作为
+> `rolling_median` 的初值；`estimate_base_ratio()` 实际从已落库行情取 60 天中位数，
+> 而 `generate_signal()` 必然在 `collect_once()` 插入首条行情之后调用，因此首条行情
+> 即自校准到真实比价（约 `0.9578`），**不会误触发 `spread_short`**。该键属于
+> `STAT_KEYS`，改动会切分 `config_hash`、分裂样本分组，通常无需修改；
+> 确要改必须在积累样本之前改。
 
 #### 合规提示与兼容
 
@@ -319,6 +323,34 @@ $PYTHON frontend/serve.py                 # 另开终端看大屏（?source=live
 - 后端为旧版（`/api/state` 无 `meta`、`/api/market` 返回 404）时，新增的数据源 / 行情
   chip 自动隐藏，页面保持旧版外观，不会报错。
 - 大屏只读 SQLite，不触发任何交易动作，也**不修改**统计、放行、快照口径。
+
+### 6.5 Docker 常驻部署（推荐）
+
+L1 是 5s 轮询的常驻进程，只在交易时段采集、每天 15:10 冻结一次。开发机白天休眠
+会让整条数据链路断供，所以真实运行应放到 7×24 常开的机器上：
+
+```bash
+# 本机同步源码（*.db / data / reports / logs 不进镜像，演示库单独传）
+rsync -az --exclude='.git/' --exclude='.workbuddy/' --exclude='*.pyc' \
+  --exclude='*.db' --exclude='data/' --exclude='reports/' --exclude='logs/' \
+  ./ <user>@<host>:/path/to/ratioguard/
+rsync -az frontend/demo_qsignal.db <user>@<host>:/path/to/ratioguard/data/
+
+# 服务器
+ssh <user>@<host>
+cd /path/to/ratioguard
+printf 'UID=%s\nGID=%s\n' "$(id -u)" "$(id -g)" > .env
+docker-compose build collector && docker-compose up -d
+```
+
+`collector`（唯一数据生产者）与 `web`（只读大屏）共用同一镜像，SQLite 落在宿主机
+卷 `./data`。默认 `web.ports: "8788:8787"`，可信局域网直接打开
+`http://<服务器IP>:8788/`；服务无鉴权，**勿做路由器端口转发或公网反代**。
+改任何 `.py` 都要重建镜像并重启容器，改 html/css/js 刷新浏览器即可。
+
+首次启动若已过 15:10 会补跑一次日终例程、冻结一份空快照，属幂等补执行。
+自动恢复（watchdog）、每日在线备份、升级流程、镜像加速与完整前置条件见
+**`deploy/DOCKER.md`**。
 
 ---
 
@@ -388,6 +420,9 @@ L2 剩下的唯一增量只是「用 LLM 把结构化结果汇总成人话摘要
 | 改了前端没生效 | html / css / js 刷新浏览器；改 `serve.py` / `collector.py` 必须重启 Python 进程 |
 | 找不到 `/report` `/status` 等斜杠指令，或 automation / Skill 没生效 | 这些指令从未注册、3 条 automation 从未创建、`skills/` 不在 Skill 加载路径，属**设计上未启用**；直接用 §5 的 `qctl.py` 子命令与 `frontend/` 大屏即可（见 §8） |
 | 大屏两个新 chip 不显示 | 后端是旧版进程（无 `meta` / `/api/market` 404），前端自动隐藏属预期；重启 `frontend/serve.py` 即可 |
+| Docker 下 `?source=demo` 报 `attempt to write a readonly database` | 演示库被只读挂载；用 `QSIGNAL_DEMO_DB` 指向可写的 `data/demo_qsignal.db`（见 §6.5 / `deploy/DOCKER.md`） |
+| 容器停了没自动起来 | 显式 `docker kill` 会让 daemon 挂起重启策略；等 5 分钟 watchdog，或手动 `bash scripts/watchdog.sh` / `docker-compose up -d` |
+| 局域网打不开服务器大屏 | 确认 `web.ports` 为 `"8788:8787"`、`ss -ltnp` 监听 `0.0.0.0:8788`，并检查服务器防火墙 |
 
 结构化日志检索示例：
 
@@ -406,4 +441,5 @@ ORDER BY id DESC LIMIT 20;
 统计只代表历史样本快照，不预测收益。所有输出不构成投资建议。
 
 更多设计口径见 `README.md`，验收与规则逐条对照见 `ACCEPTANCE.md`，
-人工 SOP 见 `skills/S1..S6/SKILL.md`，前端大屏完整说明见 §6.4。
+人工 SOP 见 `skills/S1..S6/SKILL.md`，前端大屏完整说明见 §6.4，
+Docker 常驻部署与运维见 §6.5 和 `deploy/DOCKER.md`。
